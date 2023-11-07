@@ -9,6 +9,9 @@ class MiniHackDataset(Dataset):
 
         print(f'Loading dataset from {path}')
         with open(path+'.pkl', 'rb') as f: self.frames = pickle.load(f)
+        with open(path+'.training.pkl', 'rb') as f: self.training_set = pickle.load(f)
+        with open(path+'.validation.pkl', 'rb') as f: self.validation_set = pickle.load(f)
+        with open(path+'.test.pkl', 'rb') as f: self.test_set = pickle.load(f)
 
         # create unique id for each {char + color} combination
         try:
@@ -36,8 +39,8 @@ class MiniHackDataset(Dataset):
     def __getitem__(self, idx):
         return self.frames[idx]
 
-    def create_mapper():
+    def create_mapper(self):
         converter = defaultdict(lambda: len(converter))
-        _ = [converter[(ch,co)] for frame in frames for ch,co in zip(frame['chars'].flatten(), frame['colors'].flatten())]
+        _ = [converter[(ch,co)] for frame in self.frames for ch,co in zip(frame['chars'].flatten(), frame['colors'].flatten())]
 
         return dict(converter)

@@ -10,23 +10,28 @@ from torch.nn.functional import normalize
 from torchmetrics.classification import MulticlassAccuracy, MulticlassAUROC, MulticlassConfusionMatrix
 from sklearn.metrics import balanced_accuracy_score
 
+from early_stopping import Saver, EarlyStopper
+
 import wandb
 
 class Trainer:
 
-    def __init__(self, model, loss_fn, optimizer, device, log=None):
+    def __init__(self, model, loss_fn, optimizer, path, device, log=None):
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.device = torch.device('cuda') if device=='cuda' and torch.cuda.is_available() else torch.device('cpu')
         self.log = log
 
+        self.stopper = EarlyStopper(patience=3, min_delta=10)
+        self.saver = Saver(path)
+
         print('Initialized trainer')
         print(f'Using {self.loss_fn}')
         print(f'Using {self.optimizer}')
         print(f'Using {self.device}')
 
-    def train(self, training_set, validation_set=None, num_classes=0, epochs=5):
+    def train(self, training_set, validation_set, num_classes, epochs=5):
         self.model.to(self.device)
 
         tr_results = defaultdict(list)
@@ -47,12 +52,19 @@ class Trainer:
             tr_results['epoch'] = e
             if self.log: wandb.log(tr_results)
 
-            if validation_set:
-                print('Validating...')
-                self.model.eval()
-                vl_results = self.eval_step(validation_set, [vl_mca, vl_auroc, vl_cm])
-                vl_results['epoch'] = e
-                if self.log: wandb.log(vl_results)
+            print('Validating...')
+            self.model.eval()
+            vl_results = self.eval_step(validation_set, [vl_mca, vl_auroc, vl_cm])
+            vl_results['epoch'] = e
+            if self.log: wandb.log(vl_results)
+
+            # saving and early stopping
+            self.saver.update_best_model(self.model, vl_results['loss'])
+            if self.stopper.stop(vl_results['loss']):
+                print(f'Stopping at epoch {e+1}')
+                break
+        self.saver.save()
+
 
         return tr_results, vl_results
 
@@ -81,7 +93,7 @@ class Trainer:
             res[name] = m.compute()
             m.reset()
 
-        res['training_loss'] = sum(losses)
+        res['loss'] = sum(losses)
 
         return res
 
@@ -112,7 +124,7 @@ class Trainer:
             res[name] = m.compute()
             m.reset() 
 
-        res['validation_loss'] = total_loss
+        res['loss'] = total_loss
 
         return res
 

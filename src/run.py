@@ -1,3 +1,4 @@
+import time
 import argparse
 from random import randrange
 
@@ -7,11 +8,11 @@ from torch.utils.data import random_split, DataLoader
 
 from dataset import MiniHackDataset
 from training import Trainer
-from models.conv2d import ConvAE, Encoder, Decoder
+from conv2d import ConvAE, Encoder, Decoder
 
 import wandb
 
-def main(path, batch_size, use_loss_weights, model_weights, lr, epochs, device, log):
+def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
     if log:
         wandb.init(
             project='encoding-minihack',
@@ -45,10 +46,12 @@ def main(path, batch_size, use_loss_weights, model_weights, lr, epochs, device, 
 
     
     # Training process
-    trainer = Trainer(model, loss_fn, optimizer, device, log)
+    if log: save_path = '../models/' + wandb.run.name
+    else:
+        timestr = time.strftime("%Y%m%d-%H%M%S")
+        save_path = '../models/' + timestr
+    trainer = Trainer(model, loss_fn, optimizer, save_path, device, log)
     results = trainer.train(training_loader, validation_loader, data_handler.num_classes,epochs)
-
-    print(results)
 
     # Test reconstruction
     try:
@@ -97,11 +100,6 @@ if __name__ == '__main__':
         '--no-use_loss_weights',
         action='store_false',
         dest='use_loss_weights'
-    )
-    trainer_args.add_argument(
-        '--model_weights',
-        type = str,
-        help='Path where to save the weights of the best model'
     )
     trainer_args.add_argument(
         '--lr',

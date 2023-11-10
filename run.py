@@ -1,4 +1,5 @@
 import argparse
+from random import randrange
 
 from torch import optim
 from torch import nn
@@ -6,10 +7,11 @@ from torch.utils.data import random_split, DataLoader
 
 from dataset import MiniHackDataset
 from training import Trainer
+from models.conv2d import ConvAE, Encoder, Decoder
 
 import wandb
 
-def main(path, batch_size, model_weights, lr, epochs, device, log):
+def main(path, batch_size, use_loss_weights, model_weights, lr, epochs, device, log):
     if log:
         wandb.init(
             project='encoding-minihack',
@@ -17,35 +19,55 @@ def main(path, batch_size, model_weights, lr, epochs, device, log):
                 'epochs': epochs,
                 'batch_size': batch_size,
                 'lr': lr,
+                'class_weights': use_loss_weights,
                 'architecture': 'conv2d'
             })
 
     # Load the dataset
-    data_handler = MiniHackDataset(path)
-    training_set, validation_set, test_set = random_split(data_handler, [0.7, 0.15, 0.15])
+    data_handler = MiniHackDataset(path, device)
 
-    training_loader = DataLoader(training_set, batch_size, shuffle=True, drop_last=True)
-    validation_loader = DataLoader(validation_set, batch_size, shuffle=True, drop_last=True)
-    test_loader = DataLoader(test_set, batch_size, shuffle=True, drop_last=True)
+    training_loader = DataLoader(data_handler.training_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
+    validation_loader = DataLoader(data_handler.validation_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
+    test_loader = DataLoader(data_handler.test_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
 
     if log: wandb.config.training_set_size = len(training_set)
     print(f'The entire dataset has {len(data_handler)} frames')
-    print(f'Training set: {len(training_set)} frames')
-    print(f'Validation set: {len(validation_set)} frames')
-    print(f'Test set: {len(test_set)} frames\n')
+    print(f'Training set: {len(data_handler.training_set)} frames')
+    print(f'Validation set: {len(data_handler.validation_set)} frames')
+    print(f'Test set: {len(data_handler.test_set)} frames\n')
 
 
     # Define the model, with optimizer and loss function
-    model = ConvAE()
-    loss_fn = nn.CrossEntropyLoss()
+    model = ConvAE(Encoder(data_handler.num_classes, 10), Decoder(data_handler.num_classes, 10))
+    if use_loss_weights: loss_fn = nn.CrossEntropyLoss(weight=data_handler.weights)
+    else: loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     
     # Training process
     trainer = Trainer(model, loss_fn, optimizer, device, log)
-    results = trainer.train(training_loader, validation_loader, epochs)
+    results = trainer.train(training_loader, validation_loader, data_handler.num_classes,epochs)
 
+    print(results)
 
+    # Test reconstruction
+    try:
+        input('Press Enter to start testing reconstruction\nCtrl+C to terminate')
+        while True:
+            test_reconstruction(data_handler, data_handler.training_set, trainer)
+            try:
+                input('Press Enter to get another sample')
+            except KeyboardInterrupt:
+                if log: wandb.finish()
+                break
+    except KeyboardInterrupt:
+        print('Terminating')
+        if log: wandb.finish()
+
+def test_reconstruction(data_handler, dataset, trainer):
+    idx = randrange(len(dataset))
+    sample = dataset[idx]
+    data_handler.render(sample, trainer.forward_pass(data_handler.collate_fn(sample)))
 
 
 if __name__ == '__main__':
@@ -66,6 +88,16 @@ if __name__ == '__main__':
     )
 
     trainer_args = parser.add_argument_group('training process')
+    trainer_args.add_argument(
+        '--use_loss_weights',
+        action='store_true',
+        help='Use class weights in the loss function'
+    )
+    trainer_args.add_argument(
+        '--no-use_loss_weights',
+        action='store_false',
+        dest='use_loss_weights'
+    )
     trainer_args.add_argument(
         '--model_weights',
         type = str,

@@ -26,13 +26,12 @@ class Trainer:
         print(f'Using {self.optimizer}')
         print(f'Using {self.device}')
 
-    def train(self, training_set, validation_set=None, epochs=5):
+    def train(self, training_set, validation_set=None, num_classes=0, epochs=5):
         self.model.to(self.device)
 
         tr_results = defaultdict(list)
         vl_results = defaultdict(list)
         
-        num_classes = training_set.dataset.dataset.num_classes
         tr_mca = MulticlassAccuracy(num_classes=num_classes, average='macro').to(self.device)
         tr_auroc = MulticlassAUROC(num_classes=num_classes, average='macro').to(self.device)
         tr_cm = MulticlassConfusionMatrix(num_classes=num_classes).to(self.device)
@@ -44,14 +43,14 @@ class Trainer:
             print(f'Epoch {e+1}/{epochs}')
 
             self.model.train()
-            tr_results = self.training_step(training_set, [tr_mca])#, tr_auroc])#, tr_cm])
+            tr_results = self.training_step(training_set, [tr_mca, tr_auroc, tr_cm])
             tr_results['epoch'] = e
             if self.log: wandb.log(tr_results)
 
             if validation_set:
                 print('Validating...')
                 self.model.eval()
-                vl_results = self.eval_step(validation_set, [vl_mca, vl_auroc])#, vl_cm])
+                vl_results = self.eval_step(validation_set, [vl_mca, vl_auroc, vl_cm])
                 vl_results['epoch'] = e
                 if self.log: wandb.log(vl_results)
 
@@ -67,18 +66,12 @@ class Trainer:
             mb = mb.to(self.device)
             logits = self.model(mb)
 
-            if len(logits.shape) == 3:
-                logits = logits.unsqueeze(0) #no one-hot encoding
-                mb = mb.long()
-
-            #mb = mb.squeeze().long()
             loss = self.loss_fn(logits, mb)
             loss.backward()
             self.optimizer.step()
 
             #logging
-            if len(mb.shape) == 3: mb_labels = mb # no one-hot encoding
-            else: mb_labels = torch.argmax(mb, dim=1) #from one-hot encoding to labels
+            mb_labels = torch.argmax(mb, dim=1) # from one-hot encoding to labels
             for m in tr_metrics:
                 m.update(logits, mb_labels)
             losses.append(loss.item())
@@ -137,9 +130,6 @@ class Trainer:
 
     def forward_pass(self, frame):
         self.model.eval()
-
-        if len(frame.shape) == 2:
-            frame = frame.view(1, 24, 80).float().to(self.device)
         logits = self.model(frame.to(self.device))
         return logits
 

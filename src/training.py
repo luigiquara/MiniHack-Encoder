@@ -16,7 +16,7 @@ import wandb
 
 class Trainer:
 
-    def __init__(self, model, loss_fn, optimizer, path, device, log=None):
+    def __init__(self, model, loss_fn=None, optimizer=None, path=None, device='cuda', log=None):
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optimizer

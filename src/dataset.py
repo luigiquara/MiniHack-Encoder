@@ -12,7 +12,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from nle.nethack import tty_render
 
 class MiniHackDataset(Dataset):
-    def __init__(self, path, device):
+    def __init__(self, path, device='cpu'):
 
         print(f'Loading dataset from {path}')
         with open(path+'.pkl', 'rb') as f: self.frames = pickle.load(f)

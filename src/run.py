@@ -4,13 +4,14 @@ from random import randrange
 
 from torch import optim
 from torch import nn
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import DataLoader
 
 from dataset import MiniHackDataset
 from training import Trainer
 from conv2d import ConvAE, Encoder, Decoder
 
 import wandb
+from torchinfo import summary
 
 def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
     if log:
@@ -21,7 +22,6 @@ def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
                 'batch_size': batch_size,
                 'lr': lr,
                 'class_weights': use_loss_weights,
-                'architecture': 'conv2d'
             })
 
     # Load the dataset
@@ -31,7 +31,7 @@ def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
     validation_loader = DataLoader(data_handler.validation_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
     test_loader = DataLoader(data_handler.test_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
 
-    if log: wandb.config.training_set_size = len(training_set)
+    if log: wandb.config.training_set_size = len(data_handler.training_set)
     print(f'The entire dataset has {len(data_handler)} frames')
     print(f'Training set: {len(data_handler.training_set)} frames')
     print(f'Validation set: {len(data_handler.validation_set)} frames')
@@ -39,10 +39,12 @@ def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
 
 
     # Define the model, with optimizer and loss function
-    model = ConvAE(Encoder(data_handler.num_classes, 10), Decoder(data_handler.num_classes, 10))
+    model = ConvAE(Encoder(data_handler.num_classes, 32), Decoder(data_handler.num_classes, 32))
     if use_loss_weights: loss_fn = nn.CrossEntropyLoss(weight=data_handler.weights)
     else: loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    #print(summary(model, (batch_size, 52, 7, 29)))
+    if log: wandb.config.model = summary(model, (batch_size, 52, 7, 29))
 
     
     # Training process

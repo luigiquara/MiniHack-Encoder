@@ -1,3 +1,4 @@
 minihack_datasets
 __pycache__
 models
+src/wandb

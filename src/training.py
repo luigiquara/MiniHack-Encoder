@@ -16,7 +16,7 @@ import wandb
 
 class Trainer:
 
-    def __init__(self, model, loss_fn=None, optimizer=None, path=None, device='cuda', log=None):
+    def __init__(self, model, loss_fn=None, optimizer=None, path=None, device='cpu', log=None):
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optimizer
@@ -56,15 +56,19 @@ class Trainer:
             self.model.eval()
             vl_results = self.eval_step(validation_set, [vl_mca, vl_auroc, vl_cm])
             vl_results['epoch'] = e
-            if self.log: wandb.log(vl_results)
+            if self.log:
+                wandb.log(vl_results)
+                f, ax = vl_cm.plot(add_text=False)
+                f.set_figwidth(7)
+                f.set_figheight(7)
+                wandb.log({"Validation Confusion Matrix": wandb.Image(f)})
 
             # saving and early stopping
-            self.saver.update_best_model(self.model, vl_results['loss'])
-            if self.stopper.stop(vl_results['loss']):
+            self.saver.update_best_model(self.model, vl_results['validation_loss'])
+            if self.stopper.stop(vl_results['validation_loss']):
                 print(f'Stopping at epoch {e+1}')
                 break
         self.saver.save()
-
 
         return tr_results, vl_results
 
@@ -93,40 +97,34 @@ class Trainer:
             res[name] = m.compute()
             m.reset()
 
-        res['loss'] = sum(losses)
+        res['training_loss'] = sum(losses)
 
         return res
 
     def eval_step(self, set, vl_metrics):
-        total_loss = 0
-        res = {}
+        with torch.no_grad():
+            total_loss = 0
+            res = {}
+            for m in vl_metrics: m.reset()
 
-        for mb in tqdm(set):
-            mb = mb.to(self.device)
-            logits = self.model(mb)
+            for mb in tqdm(set):
+                mb = mb.to(self.device)
+                logits = self.model(mb)
 
-            if len(logits.shape) == 3:
-                logits = logits.unsqueeze(0) #no one-hot encoding
-                mb = mb.long()
+                loss = self.loss_fn(logits, mb)
+                total_loss += loss.item()
 
-            #mb = mb.squeeze().long()
-            loss = self.loss_fn(logits, mb)
-            total_loss += loss.item()
+                #logging
+                mb_labels = torch.argmax(mb, dim=1) #from one-hot encoding to labels
+                for m in vl_metrics:
+                    m.update(logits, mb_labels)
 
-            #logging
-            if len(mb.shape) == 3: mb_labels = mb #no one-hot encoding
-            else: mb_labels = torch.argmax(mb, dim=1) #from one-hot encoding to labels
             for m in vl_metrics:
-                m.update(logits, mb_labels)
+                name = 'validation_' + str(m).split('(')[0].split('Multiclass')[1].lower()
+                res[name] = m.compute()
 
-        for m in vl_metrics:
-            name = 'validation_' + str(m).split('(')[0].split('Multiclass')[1].lower()
-            res[name] = m.compute()
-            m.reset() 
-
-        res['loss'] = total_loss
-
-        return res
+            res['validation_loss'] = total_loss
+        return res 
 
     def test(self, test_set):
         self.model.eval()

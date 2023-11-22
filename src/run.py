@@ -9,11 +9,12 @@ from torch.utils.data import DataLoader
 from dataset import MiniHackDataset
 from training import Trainer
 from conv2d import ConvAE, Encoder, Decoder
+#from mlp import MLPAE, Encoder, Decoder
 
 import wandb
 from torchinfo import summary
 
-def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
+def main(path, batch_size, one_hot, use_loss_weights, lr, epochs, device, log):
     if log:
         wandb.init(
             project='encoding-minihack',
@@ -22,10 +23,13 @@ def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
                 'batch_size': batch_size,
                 'lr': lr,
                 'class_weights': use_loss_weights,
+                'one_hot_encoding': one_hot,
+                'model_type': 'conv2d',
+                'activation_fn': 'tanh'
             })
 
     # Load the dataset
-    data_handler = MiniHackDataset(path, device)
+    data_handler = MiniHackDataset(path, one_hot, device)
 
     training_loader = DataLoader(data_handler.training_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
     validation_loader = DataLoader(data_handler.validation_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
@@ -40,6 +44,9 @@ def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
 
     # Define the model, with optimizer and loss function
     model = ConvAE(Encoder(data_handler.num_classes, 32), Decoder(data_handler.num_classes, 32))
+    if one_hot: print('Using one-hot encoding for the input')
+    else: print('Taking raw input')
+    #model = MLPAE(Encoder(data_handler.input_size), Decoder(data_handler.one_hot_input_size))
     if use_loss_weights: loss_fn = nn.CrossEntropyLoss(weight=data_handler.weights)
     else: loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -64,6 +71,7 @@ def main(path, batch_size, use_loss_weights, lr, epochs, device, log):
                 input('Press Enter to get another sample')
             except KeyboardInterrupt:
                 if log: wandb.finish()
+                print()
                 break
     except KeyboardInterrupt:
         print('Terminating')
@@ -90,6 +98,16 @@ if __name__ == '__main__':
         type = int,
         default = 32,
         help = 'The size of each batch'
+    )
+    reader_args.add_argument(
+        '--one_hot',
+        action='store_true',
+        help='Use one-hot encoding for input data'
+    )
+    reader_args.add_argument(
+        '--no-one_hot',
+        action='store_false',
+        dest='one_hot'
     )
 
     trainer_args = parser.add_argument_group('training process')

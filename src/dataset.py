@@ -12,7 +12,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from nle.nethack import tty_render
 
 class MiniHackDataset(Dataset):
-    def __init__(self, path, device='cpu'):
+    def __init__(self, path, one_hot=True, device='cpu'):
 
         print(f'Loading dataset from {path}')
         with open(path+'.pkl', 'rb') as f: self.frames = pickle.load(f)
@@ -42,6 +42,9 @@ class MiniHackDataset(Dataset):
         self.mapped_training_set = self.map_to_id(self.training_set)
         self.weights = compute_class_weight(class_weight='balanced', classes=np.unique(self.mapped_training_set), y=self.mapped_training_set)
         self.weights = torch.tensor(self.weights).to(device)
+        self.one_hot = one_hot
+        self.input_size = self.frames[0]['chars'].shape[0] * self.frames[0]['chars'].shape[1]
+        self.one_hot_input_size = self.input_size * self.num_classes
 
     def __len__(self):
         return len(self.frames)
@@ -62,7 +65,11 @@ class MiniHackDataset(Dataset):
         def process(frame):
             f = [self.mapper[(ch,co)] for ch, co in zip(frame['chars'].flatten(), frame['colors'].flatten())]
             f = torch.tensor(f)
-            f = one_hot(f.long(), num_classes=self.num_classes).float().view(self.num_classes, frame['chars'].shape[0], frame['chars'].shape[1])
+            if self.one_hot:
+                f = one_hot(f.long(), num_classes=self.num_classes).float()
+                f = f.view(self.num_classes, frame['chars'].shape[0], frame['chars'].shape[1])
+            else:
+                f = f.view(frame['chars'].shape[0], frame['chars'].shape[1])
 
             return f
 

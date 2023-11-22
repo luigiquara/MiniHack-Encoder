@@ -81,13 +81,17 @@ class Trainer:
 
             mb = mb.to(self.device)
             logits = self.model(mb)
+            assert mb.shape == (len(mb), 52, 7, 29), mb.shape
+            assert logits.shape == (len(mb), 52, 7, 29)
 
             loss = self.loss_fn(logits, mb)
             loss.backward()
             self.optimizer.step()
 
             #logging
-            mb_labels = torch.argmax(mb, dim=1) # from one-hot encoding to labels
+            if len(mb.shape) != 3: # one-hot encoded input
+                mb_labels = torch.argmax(mb, dim=1) # from one-hot encoding to labels
+            else: mb_labels = mb
             for m in tr_metrics:
                 m.update(logits, mb_labels)
             losses.append(loss.item())
@@ -110,14 +114,20 @@ class Trainer:
             for mb in tqdm(set):
                 mb = mb.to(self.device)
                 logits = self.model(mb)
+                assert mb.shape == (len(mb), 52, 7, 29)
+                assert logits.shape == (len(mb), 52, 7, 29)
 
                 loss = self.loss_fn(logits, mb)
                 total_loss += loss.item()
 
                 #logging
-                mb_labels = torch.argmax(mb, dim=1) #from one-hot encoding to labels
-                for m in vl_metrics:
-                    m.update(logits, mb_labels)
+                if len(mb.shape) != 3: # one-hot encoded input
+                    mb_labels = torch.argmax(mb, dim=1) # from one-hot encoding to labels
+                    for m in vl_metrics:
+                        m.update(logits, mb_labels)
+                else:
+                    for m in vl_metrics:
+                        m.update(logits, mb)
 
             for m in vl_metrics:
                 name = 'validation_' + str(m).split('(')[0].split('Multiclass')[1].lower()

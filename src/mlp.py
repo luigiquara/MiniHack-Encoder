@@ -1,41 +1,55 @@
+import torch
 from torch import nn
 
 class Encoder(nn.Module):
-    def __init__(self, input_size):
-        super().__init__()
+    def __init__(self, input_size, cfg):
+        super(Encoder, self).__init__()
 
-        self.encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(input_size, 4096),
-            nn.ReLU(),
-            nn.Linear(4096, 2048),
-            nn.ReLU(),
-            nn.Linear(2048, 256),
-            nn.ReLU(),
-            nn.Linear(256, 32),
-            nn.ReLU()
-        )
+        self.flatten = nn.Flatten()
+        self.linear_layers = nn.ModuleList()
+        for i in range(cfg.num_layers - 1):
+            self.linear_layers.append(nn.Linear(input_size, input_size//2))
+            input_size = input_size // 2
+        self.linear_layers.append(nn.Linear(input_size, cfg.hidden_size))
 
-    def forward(self, input):
-        return self.encoder(input)
+        if cfg.activation_fn == 'relu': self.act_fn = nn.ReLU()
+        if cfg.activation_fn == 'tanh': self.act_fn = nn.Tanh()
+
+        self.num_layers = cfg.num_layers
+
+    def forward(self, x):
+        input = self.flatten(x)
+        for i in range(self.num_layers):
+            out = self.linear_layers[i](input)
+            out = self.act_fn(out)
+            input = out
+
+        return out
+
 
 class Decoder(nn.Module):
-    def __init__(self, input_size):
-        super().__init__()
+    def __init__(self, input_size, cfg):
+        super(Decoder, self).__init__()
 
-        self.decoder = nn.Sequential(
-            nn.Linear(32, 256),
-            nn.ReLU(),
-            nn.Linear(256, 2048),
-            nn.ReLU(),
-            nn.Linear(2048, 4096),
-            nn.ReLU(),
-            nn.Linear(4096, input_size),
-            nn.ReLU()
-        )
+        self.linear_layers = nn.ModuleList()
+        for _ in range(cfg.num_layers - 1):
+            self.linear_layers.insert(0, nn.Linear(input_size // 2, input_size))
+            input_size = input_size // 2
+        self.linear_layers.insert(0, nn.Linear(cfg.hidden_size, input_size))
 
-    def forward(self, input):
-        return self.decoder(input)
+        if cfg.activation_fn == 'relu': self.act_fn = nn.ReLU()
+        if cfg.activation_fn == 'tanh': self.act_fn = nn.Tanh()
+
+        self.num_layers = cfg.num_layers
+
+    def forward(self, x):
+        input = x
+        for i in range(self.num_layers):
+            out = self.linear_layers[i](input)
+            out = self.act_fn(out)
+            input = out
+        return out
+
 
 class MLPAE(nn.Module):
     def __init__(self, encoder, decoder):
@@ -45,4 +59,6 @@ class MLPAE(nn.Module):
         self.decoder = decoder
 
     def forward(self, input):
-        return self.decoder(self.encoder(input)).view(-1, 52, 7, 29)
+        encoded = self.encoder(input)
+        decoded = self.decoder(encoded)
+        return decoded.view(-1, 52, 7, 29)

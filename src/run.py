@@ -1,5 +1,7 @@
+import os
 import time
-import argparse
+import hydra
+from omegaconf import OmegaConf, DictConfig
 from random import randrange
 
 from torch import optim
@@ -8,34 +10,37 @@ from torch.utils.data import DataLoader
 
 from dataset import MiniHackDataset
 from training import Trainer
-from conv2d import ConvAE, Encoder, Decoder
-#from mlp import MLPAE, Encoder, Decoder
+from hydra_mlp import MLPAE, Encoder, Decoder
 
 import wandb
 from torchinfo import summary
 
-def main(path, batch_size, one_hot, use_loss_weights, lr, epochs, device, log):
-    if log:
+@hydra.main(config_path="config", config_name="config")
+def main(cfg: DictConfig):
+    if cfg.log:
         wandb.init(
             project='encoding-minihack',
             config = {
-                'epochs': epochs,
-                'batch_size': batch_size,
-                'lr': lr,
-                'class_weights': use_loss_weights,
-                'one_hot_encoding': one_hot,
-                'model_type': 'conv2d',
-                'activation_fn': 'tanh'
+                'epochs': cfg.train.epochs,
+                'batch_size': cfg.train.batch_size,
+                'lr': cfg.train.lr,
+                'class_weights': cfg.train.use_loss_weights,
+                'one_hot_encoding': cfg.train.one_hot,
+                'model_type': cfg.architecture,
+                'activation_fn': cfg.architecture.activation_fn
             })
 
+    if cfg.log:
+        wandb.config.cfg = OmegaConf.to_yaml(cfg)
+
     # Load the dataset
-    data_handler = MiniHackDataset(path, one_hot, device)
+    data_handler = MiniHackDataset(cfg.path.data_path, cfg.train.one_hot, cfg.train.device)
 
-    training_loader = DataLoader(data_handler.training_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
-    validation_loader = DataLoader(data_handler.validation_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
-    test_loader = DataLoader(data_handler.test_set, batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
+    training_loader = DataLoader(data_handler.training_set, cfg.train.batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
+    validation_loader = DataLoader(data_handler.validation_set, cfg.train.batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
+    test_loader = DataLoader(data_handler.test_set, cfg.train.batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
 
-    if log: wandb.config.training_set_size = len(data_handler.training_set)
+    if cfg.log: wandb.config.training_set_size = len(data_handler.training_set)
     print(f'The entire dataset has {len(data_handler)} frames')
     print(f'Training set: {len(data_handler.training_set)} frames')
     print(f'Validation set: {len(data_handler.validation_set)} frames')
@@ -43,24 +48,23 @@ def main(path, batch_size, one_hot, use_loss_weights, lr, epochs, device, log):
 
 
     # Define the model, with optimizer and loss function
-    model = ConvAE(Encoder(data_handler.num_classes, 32), Decoder(data_handler.num_classes, 32))
-    if one_hot: print('Using one-hot encoding for the input')
+    if cfg.train.one_hot: print('Using one-hot encoding for the input')
     else: print('Taking raw input')
-    #model = MLPAE(Encoder(data_handler.input_size), Decoder(data_handler.one_hot_input_size))
-    if use_loss_weights: loss_fn = nn.CrossEntropyLoss(weight=data_handler.weights)
+    model = MLPAE(Encoder(data_handler.one_hot_input_size, cfg.architecture), Decoder(data_handler.one_hot_input_size, cfg.architecture))
+    summary(model, (cfg.train.batch_size, 52*7*29))
+
+    if cfg.train.use_loss_weights: loss_fn = nn.CrossEntropyLoss(weight=data_handler.weights)
     else: loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    #print(summary(model, (batch_size, 52, 7, 29)))
-    if log: wandb.config.model = summary(model, (batch_size, 52, 7, 29))
+    optimizer = optim.Adam(model.parameters(), lr=cfg.train.lr)
+    if cfg.log: wandb.config.model = summary(model, (cfg.train.batch_size, 52, 7, 29))
 
     
     # Training process
-    if log: save_path = '../models/' + wandb.run.name
-    else:
-        timestr = time.strftime("%Y%m%d-%H%M%S")
-        save_path = '../models/' + timestr
-    trainer = Trainer(model, loss_fn, optimizer, save_path, device, log)
-    results = trainer.train(training_loader, validation_loader, data_handler.num_classes,epochs)
+    if cfg.log: save_path = os.getcwd() + '/' + wandb.run.name
+    else: save_path = os.getcwd() + '/model'
+    trainer = Trainer(model, loss_fn, optimizer, save_path, cfg.train.device, cfg.log)
+    results = trainer.train(training_loader, validation_loader, data_handler.num_classes, cfg.train.epochs)
+
 
     # Test reconstruction
     try:
@@ -70,12 +74,12 @@ def main(path, batch_size, one_hot, use_loss_weights, lr, epochs, device, log):
             try:
                 input('Press Enter to get another sample')
             except KeyboardInterrupt:
-                if log: wandb.finish()
+                if cfg.log: wandb.finish()
                 print()
                 break
     except KeyboardInterrupt:
         print('Terminating')
-        if log: wandb.finish()
+        if cfg.log: wandb.finish()
 
 def test_reconstruction(data_handler, dataset, trainer):
     idx = randrange(len(dataset))
@@ -83,72 +87,4 @@ def test_reconstruction(data_handler, dataset, trainer):
     data_handler.render(sample, trainer.forward_pass(data_handler.collate_fn(sample)))
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-
-    reader_args = parser.add_argument_group('read the dataset')
-    reader_args.add_argument(
-        '--path',
-        type = str,
-        default = 'datasets/dataset',
-        help = 'The filepath to the dataset'
-    )
-    reader_args.add_argument(
-        '--batch_size',
-        type = int,
-        default = 32,
-        help = 'The size of each batch'
-    )
-    reader_args.add_argument(
-        '--one_hot',
-        action='store_true',
-        help='Use one-hot encoding for input data'
-    )
-    reader_args.add_argument(
-        '--no-one_hot',
-        action='store_false',
-        dest='one_hot'
-    )
-
-    trainer_args = parser.add_argument_group('training process')
-    trainer_args.add_argument(
-        '--use_loss_weights',
-        action='store_true',
-        help='Use class weights in the loss function'
-    )
-    trainer_args.add_argument(
-        '--no-use_loss_weights',
-        action='store_false',
-        dest='use_loss_weights'
-    )
-    trainer_args.add_argument(
-        '--lr',
-        type = float,
-        default = 1e-3,
-        help = 'The learning rate'
-    )
-    trainer_args.add_argument(
-        '--epochs',
-        type = int,
-        default = 5,
-        help = 'The number of epochs'
-    )
-    trainer_args.add_argument(
-        '--device',
-        type=str,
-        default='cuda',
-        help='The device to use to run the experiments'
-    )
-    trainer_args.add_argument(
-        '--log',
-        action='store_true',
-        help='Log the results using wandb'
-    )
-    trainer_args.add_argument(
-        '--no-log',
-        dest='log',
-        action='store_false'
-    )
-
-    flags = parser.parse_args()
-    main(**vars(flags))
+if __name__ == '__main__': main()

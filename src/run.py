@@ -10,10 +10,12 @@ from torch.utils.data import DataLoader
 
 from dataset import MiniHackDataset
 from training import Trainer
-from hydra_mlp import MLPAE, Encoder, Decoder
+from mlp import MLPAE, Encoder, Decoder
 
 import wandb
 from torchinfo import summary
+
+from sklearn.model_selection import train_test_split as tts
 
 @hydra.main(config_path="config", config_name="config")
 def main(cfg: DictConfig):
@@ -26,8 +28,13 @@ def main(cfg: DictConfig):
                 'lr': cfg.train.lr,
                 'class_weights': cfg.train.use_loss_weights,
                 'one_hot_encoding': cfg.train.one_hot,
-                'model_type': cfg.architecture,
-                'activation_fn': cfg.architecture.activation_fn
+                'model_type': cfg.architecture.name,
+                'encoder_num_layers': cfg.architecture.encoder_num_layers,
+                'decoder_num_layers': cfg.architecture.decoder_num_layers,
+                'activation_fn': cfg.architecture.activation_fn,
+                'optimizer': cfg.optimizer.name,
+                'momentum': cfg.optimizer.momentum,
+                'nesterov': cfg.optimizer.nesterov
             })
 
     if cfg.log:
@@ -47,16 +54,40 @@ def main(cfg: DictConfig):
     print(f'Test set: {len(data_handler.test_set)} frames\n')
 
 
+    if cfg.architecture.name == 'mlp':
+        from mlp import MLPAE, Encoder, Decoder
+        
+        model = MLPAE(Encoder(data.data_handler.one_hot_input_size, cfg.architecture), Decoder(data_handler.one_hot_input_size, cfg.architecture))
+    elif cfg.architecture.name == 'conv2d':
+        pass
+    elif cfg.architecture.name == 'unet':
+        from unet import UNet
+
+        model = UNet(data_handler.num_classes, ll_input_size=3*14*cfg.architecture.output_channels, cfg=cfg.architecture)
+    summary(model, input_data=next(iter(training_loader)), col_names=['input_size', 'output_size'])
+    
+
+    '''
     # Define the model, with optimizer and loss function
-    if cfg.train.one_hot: print('Using one-hot encoding for the input')
-    else: print('Taking raw input')
-    model = MLPAE(Encoder(data_handler.one_hot_input_size, cfg.architecture), Decoder(data_handler.one_hot_input_size, cfg.architecture))
-    summary(model, (cfg.train.batch_size, 52*7*29))
+    if cfg.architecture == 'mlp':
+        if cfg.train.one_hot:
+            print('Using one-hot encoding for the input')
+            model = MLPAE(Encoder(data_handler.one_hot_input_size, cfg.architecture), Decoder(data_handler.one_hot_input_size, cfg.architecture))
+        else:
+            print('Taking raw input')
+            model = MLPAE(Encoder(data_handler.input_size, cfg.architecture), Decoder(data_handler.one_hot_input_size, cfg.architecture))
+        #summary(model, (cfg.train.batch_size, 52*7*29))
+    '''
 
     if cfg.train.use_loss_weights: loss_fn = nn.CrossEntropyLoss(weight=data_handler.weights)
     else: loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=cfg.train.lr)
-    if cfg.log: wandb.config.model = summary(model, (cfg.train.batch_size, 52, 7, 29))
+
+
+    if cfg.optimizer.name == 'adam': optimizer = optim.Adam(model.parameters(), lr=cfg.train.lr)
+    if cfg.optimizer.name == 'sgd':
+        optimizer = optim.SGD(model.parameters(), lr=cfg.train.lr,
+                              momentum=cfg.optimizer.momentum, nesterov=cfg.optimizer.nesterov)
+    if cfg.log: wandb.config.model = summary(model, (cfg.train.batch_size, 51, 7, 29))
 
     
     # Training process

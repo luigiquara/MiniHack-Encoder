@@ -7,7 +7,7 @@ class Encoder(nn.Module):
 
         self.flatten = nn.Flatten()
         self.linear_layers = nn.ModuleList()
-        for i in range(cfg.num_layers - 1):
+        for i in range(cfg.encoder_num_layers - 1):
             self.linear_layers.append(nn.Linear(input_size, input_size//2))
             input_size = input_size // 2
         self.linear_layers.append(nn.Linear(input_size, cfg.hidden_size))
@@ -15,10 +15,10 @@ class Encoder(nn.Module):
         if cfg.activation_fn == 'relu': self.act_fn = nn.ReLU()
         if cfg.activation_fn == 'tanh': self.act_fn = nn.Tanh()
 
-        self.num_layers = cfg.num_layers
+        self.num_layers = cfg.encoder_num_layers
 
     def forward(self, x):
-        input = self.flatten(x)
+        input = self.flatten(x.float())
         for i in range(self.num_layers):
             out = self.linear_layers[i](input)
             out = self.act_fn(out)
@@ -32,7 +32,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
 
         self.linear_layers = nn.ModuleList()
-        for _ in range(cfg.num_layers - 1):
+        for _ in range(cfg.decoder_num_layers - 1):
             self.linear_layers.insert(0, nn.Linear(input_size // 2, input_size))
             input_size = input_size // 2
         self.linear_layers.insert(0, nn.Linear(cfg.hidden_size, input_size))
@@ -40,7 +40,7 @@ class Decoder(nn.Module):
         if cfg.activation_fn == 'relu': self.act_fn = nn.ReLU()
         if cfg.activation_fn == 'tanh': self.act_fn = nn.Tanh()
 
-        self.num_layers = cfg.num_layers
+        self.num_layers = cfg.decoder_num_layers
 
     def forward(self, x):
         input = x
@@ -61,4 +61,4 @@ class MLPAE(nn.Module):
     def forward(self, input):
         encoded = self.encoder(input)
         decoded = self.decoder(encoded)
-        return decoded.view(-1, 52, 7, 29)
+        return decoded.view(-1, 51, 7, 29)

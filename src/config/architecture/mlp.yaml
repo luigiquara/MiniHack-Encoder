@@ -1,0 +1,6 @@
+name: 'mlp'
+
+encoder_num_layers: 5
+decoder_num_layers: 5
+hidden_size: 32
+act_fn: 'tanh' 

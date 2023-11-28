@@ -1,0 +1,5 @@
+name: 'unet'
+
+output_channels: 256
+hidden_size: 32
+act_fn: 'tanh' 

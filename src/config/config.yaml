@@ -1,0 +1,17 @@
+defaults:
+    - architecture: ???
+    - optimizer: ???
+
+path:
+    data_path: "/home/lquarantiello/minihack-encoder/minihack_datasets/dataset/dataset"
+    model_path: "/home/lquarantiello/minihack-encoder/models"
+
+train:
+    batch_size: 128
+    epochs: 40
+    lr: 1e-3
+    one_hot: True
+    use_loss_weights: False
+    device: "cuda"
+
+log: False

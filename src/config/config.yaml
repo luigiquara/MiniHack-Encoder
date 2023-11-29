@@ -12,6 +12,7 @@ train:
     lr: 1e-3
     one_hot: True
     use_loss_weights: False
+    label_smoothing: 0.0
     device: "cuda"
 
 log: False

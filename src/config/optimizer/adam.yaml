@@ -1,1 +1,6 @@
 name: "adam"
+
+momentum: None
+nesterov: None
+weight_decay: 0
+amsgrad: false

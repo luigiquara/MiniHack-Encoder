@@ -1,3 +1,5 @@
 name: "sgd"
+
 momentum: 0.9
 nesterov: True
+weight_decay: 0

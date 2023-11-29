@@ -31,17 +31,19 @@ def main(cfg: DictConfig):
                 'model_type': cfg.architecture.name,
                 'encoder_num_layers': cfg.architecture.encoder_num_layers,
                 'decoder_num_layers': cfg.architecture.decoder_num_layers,
-                'activation_fn': cfg.architecture.activation_fn,
+                'activation_fn': cfg.architecture.act_fn,
                 'optimizer': cfg.optimizer.name,
+                'weight_decay_lambda': cfg.optimizer.weight_decay,
                 'momentum': cfg.optimizer.momentum,
-                'nesterov': cfg.optimizer.nesterov
+                'nesterov': cfg.optimizer.nesterov,
+                'label_smoothing': cfg.train.label_smoothing
             })
 
     if cfg.log:
         wandb.config.cfg = OmegaConf.to_yaml(cfg)
 
     # Load the dataset
-    data_handler = MiniHackDataset(cfg.path.data_path, cfg.train.one_hot, cfg.train.device)
+    data_handler = MiniHackDataset(cfg.path.data_path, cfg.train.one_hot, cfg.train.device, sample=True)
 
     training_loader = DataLoader(data_handler.training_set, cfg.train.batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
     validation_loader = DataLoader(data_handler.validation_set, cfg.train.batch_size, shuffle=True, drop_last=True, collate_fn=data_handler.collate_fn)
@@ -57,7 +59,7 @@ def main(cfg: DictConfig):
     if cfg.architecture.name == 'mlp':
         from mlp import MLPAE, Encoder, Decoder
         
-        model = MLPAE(Encoder(data.data_handler.one_hot_input_size, cfg.architecture), Decoder(data_handler.one_hot_input_size, cfg.architecture))
+        model = MLPAE(Encoder(data_handler.one_hot_input_size, cfg.architecture), Decoder(data_handler.one_hot_input_size, cfg.architecture), data_handler.num_classes)
     elif cfg.architecture.name == 'conv2d':
         pass
     elif cfg.architecture.name == 'unet':
@@ -79,14 +81,16 @@ def main(cfg: DictConfig):
         #summary(model, (cfg.train.batch_size, 52*7*29))
     '''
 
-    if cfg.train.use_loss_weights: loss_fn = nn.CrossEntropyLoss(weight=data_handler.weights)
-    else: loss_fn = nn.CrossEntropyLoss()
+    if cfg.train.use_loss_weights: loss_fn = nn.CrossEntropyLoss(weight=data_handler.weights, label_smoothing=cfg.train.label_smoothing)
+    else: loss_fn = nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
 
 
-    if cfg.optimizer.name == 'adam': optimizer = optim.Adam(model.parameters(), lr=cfg.train.lr)
+    if cfg.optimizer.name == 'adam':
+        if cfg.log: wandb.config.amsgrad = cfg.optimizer.amsgrad
+        optimizer = optim.Adam(model.parameters(), lr=cfg.train.lr, weight_decay=cfg.optimizer.weight_decay, amsgrad=cfg.optimizer.amsgrad)
     if cfg.optimizer.name == 'sgd':
         optimizer = optim.SGD(model.parameters(), lr=cfg.train.lr,
-                              momentum=cfg.optimizer.momentum, nesterov=cfg.optimizer.nesterov)
+                              momentum=cfg.optimizer.momentum, nesterov=cfg.optimizer.nesterov, weight_decay=cfg.optimizer.weight_decay)
     if cfg.log: wandb.config.model = summary(model, (cfg.train.batch_size, 51, 7, 29))
 
     
@@ -95,6 +99,7 @@ def main(cfg: DictConfig):
     else: save_path = os.getcwd() + '/model'
     trainer = Trainer(model, loss_fn, optimizer, save_path, cfg.train.device, cfg.log)
     results = trainer.train(training_loader, validation_loader, data_handler.num_classes, cfg.train.epochs)
+    print(results)
 
 
     # Test reconstruction

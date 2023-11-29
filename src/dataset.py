@@ -12,13 +12,21 @@ from sklearn.utils.class_weight import compute_class_weight
 from nle.nethack import tty_render
 
 class MiniHackDataset(Dataset):
-    def __init__(self, path, one_hot=True, device='cpu'):
+    def __init__(self, path, one_hot=True, device='cpu', sample=False):
 
         print(f'Loading dataset from {path}')
-        with open(path+'.pkl', 'rb') as f: self.frames = pickle.load(f)
-        with open(path+'.training.pkl', 'rb') as f: self.training_set = pickle.load(f)
-        with open(path+'.validation.pkl', 'rb') as f: self.validation_set = pickle.load(f)
-        with open(path+'.test.pkl', 'rb') as f: self.test_set = pickle.load(f)
+        # Used ONLY for debugging
+        # Using a very small sample set to try to overfit
+        if sample:
+            with open(path, 'rb') as f: self.frames = pickle.load(f)
+            self.training_set = self.frames
+            self.validation_set = self.frames
+            self.test_set = self.frames
+        else:
+            with open(path+'.pkl', 'rb') as f: self.frames = pickle.load(f)
+            with open(path+'.training.pkl', 'rb') as f: self.training_set = pickle.load(f)
+            with open(path+'.validation.pkl', 'rb') as f: self.validation_set = pickle.load(f)
+            with open(path+'.test.pkl', 'rb') as f: self.test_set = pickle.load(f)
 
         # create unique id for each {char + color} combination
         try:

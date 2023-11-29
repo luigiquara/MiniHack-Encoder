@@ -81,9 +81,6 @@ class Trainer:
 
             mb = mb.to(self.device)
             logits = self.model(mb)
-            assert mb.shape == (len(mb), 51, 7, 29), mb.shape
-            assert logits.shape == (len(mb), 51, 7, 29)
-
             loss = self.loss_fn(logits, mb)
             loss.backward()
             self.optimizer.step()
@@ -114,9 +111,6 @@ class Trainer:
             for mb in tqdm(set):
                 mb = mb.to(self.device)
                 logits = self.model(mb)
-                assert mb.shape == (len(mb), 51, 7, 29)
-                assert logits.shape == (len(mb), 51, 7, 29)
-
                 loss = self.loss_fn(logits, mb)
                 total_loss += loss.item()
 

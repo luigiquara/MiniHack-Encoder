@@ -12,8 +12,8 @@ class Encoder(nn.Module):
             input_size = input_size // 2
         self.linear_layers.append(nn.Linear(input_size, cfg.hidden_size))
 
-        if cfg.activation_fn == 'relu': self.act_fn = nn.ReLU()
-        if cfg.activation_fn == 'tanh': self.act_fn = nn.Tanh()
+        if cfg.act_fn == 'relu': self.act_fn = nn.ReLU()
+        if cfg.act_fn == 'tanh': self.act_fn = nn.Tanh()
 
         self.num_layers = cfg.encoder_num_layers
 
@@ -37,8 +37,8 @@ class Decoder(nn.Module):
             input_size = input_size // 2
         self.linear_layers.insert(0, nn.Linear(cfg.hidden_size, input_size))
 
-        if cfg.activation_fn == 'relu': self.act_fn = nn.ReLU()
-        if cfg.activation_fn == 'tanh': self.act_fn = nn.Tanh()
+        if cfg.act_fn == 'relu': self.act_fn = nn.ReLU()
+        if cfg.act_fn == 'tanh': self.act_fn = nn.Tanh()
 
         self.num_layers = cfg.decoder_num_layers
 
@@ -52,13 +52,14 @@ class Decoder(nn.Module):
 
 
 class MLPAE(nn.Module):
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder, decoder, num_classes):
         super().__init__()
 
         self.encoder = encoder
         self.decoder = decoder
+        self.num_classes = num_classes
 
     def forward(self, input):
         encoded = self.encoder(input)
         decoded = self.decoder(encoded)
-        return decoded.view(-1, 51, 7, 29)
+        return decoded.view(-1, self.num_classes, 7, 29)
